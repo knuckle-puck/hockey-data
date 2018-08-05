@@ -1,2 +1,5 @@
-# fantasy-hockey
-Repository for fantasy hockey scripts and data.
+# Data
+See the "Data" folder.
+
+# Scripts
+See the "Scripts" folder.
