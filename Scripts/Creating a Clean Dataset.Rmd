@@ -1,0 +1,775 @@
+---
+title: "Creating a Clean Dataset"
+author: "Harrison Jones"
+date: "[INSERT DATE]"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r Setup, include = FALSE}
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = FALSE)
+
+```
+
+## Introduction
+
+In Part 1 of the Fantasy Hockey Series we'll look at creating a clean set of data that contains various statistics for NHL players. Our clean data will be used for the remaining articles in the Fantasy Hockey Series. More specifically, our data will contain statistics that are most relevant for analysis in fantasy hockey. We attempt to cover all categories that could be scored in fantasy hockey leagues: Goals, Assists, Points, Hits, Shots, PIMs, Blocked Shots, Faceoff Wins/Losses, and Time on ice. Additionally, these stats will be tracked for even strength, powerplay, and penalty kill, for both the most recent regular season (2017-2018) and the previous regular season (2016-2017).  
+
+In short, the goal of Part 1 is to create files that can be picked up by the average Joe fantasy player, and immediately begin to perform their own analysis. In my experience I have found great sources of data, but they are often either:
+
+(i) unapproachable by common software (i.e. it's tough to find an Excel file with all relevant data); or
+
+(ii) an overload of information in multiple locations (as an example, it's not an intuitive process to find Hits, Shorthanded Points, and Faceoff percentage, for the past two years, in the same Excel file)
+
+A group of files will be created that will address these concerns. These have all been published on my GitHub respository [INSERT LINK].
+
+## Data
+
+In my opinion, the definitive source of easy-to-access hockey data is from Hockey Abstract. The website is maintained by Rob Vollman and he publishes what he defines as "not an introductory document". I would agree with this sentiment as it contains nearly every relevant stat that a hockey fan could want to know. I have personally used this source of data for the past four years, but as Rob mentions, this is not an approachable document for those with basic knowledge of managing data. Our goal will be to narrow down exactly what is necessary for our fantasy hockey analysis.
+
+## R Setup
+
+The remainder of this article will discuss the code that was used to produce the final output. For those only interested in the files that were created, please visit the GitHub repository at the link provided above.
+
+```{r RSetup}
+
+library(tidyverse)
+library(rara)
+library(readxl)
+library(WriteXLS)
+library(magrittr)
+
+# insert your own path to the data
+importPath <- 'C:/Users/harri/Documents/Blog - KnucklePuck/04. Rawdata/'
+
+# insert your own path to exporting the data
+exportPath <- 'C:/Users/harri/Documents/Blog - KnucklePuck/05. Export/'
+
+```
+
+## Import Data
+
+I have included all files required to run the code below on my GitHub repository [INSERT LINK], but I would also recommend that you visit Rob's website: http://www.hockeyabstract.com/. 
+
+For each year of data that was compiled, it was split into multiple tabs based on the game situation (i.e. there are separate tabs for Powerplays and Penalty Kills). Different import specifications are sometimes required for each tab, which is why they are written out individually.
+
+The first game situation that is imported is "All Situations". Most of these columns are player-specific details that would not change depending on the game situation. Game winning goals is also included here since it was not provided for other game situations.
+
+```{r Import_AllSituations_2018}
+
+allSituations_2018 <- read_excel(path = paste0(importPath, "NHL 2017-18.xls"), sheet = 'TOT', skip = 2) %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2018 = Team,
+         NHLID = NHLid,
+         DateOfBirth = Born, 
+         Age_2018 = Age,
+         NHLSeasons = Seasons,
+         CountryOfBirth = Cntry, 
+         Height_2018 = Ht, 
+         Weight_2018 = Wt, 
+         DraftRound = DftRd, 
+         DraftYear = DftYr,
+         StickHand = Hand,
+         Position_2018 = Position,
+         TimeOnIce_PerGame_2018 = `TOI/GP`, 
+         PlusMinus_AllSituations_2018 = `+/-`,
+         GameWinningGoals_AllSituations_2018 = GWG, 
+         DefensivePointShare_AllSituations_2018 = DPS, # the second DPS column is "Career DPS" 
+         OffensivePointShare_AllSituations_2018 = OPS)
+
+```
+
+Another interesting characteristic of the Hockey Abstract data is that it contains multiple sources for the same statistic. One example is Shots; where they have compiled the Shot total for each player from the NHL, Corsica, and Natural Stat Trick. Where possible I used the NHL as a data source. If the NHL was not available as a data source then I used Corsica. 
+
+```{r Import_EvenStrength_2018}
+
+evenStrength_2018 <- read_excel(path = paste0(importPath, "NHL 2017-18.xls"), sheet = 'ES', skip = 2) %>%
+  select(LastName = `First Name`, 
+         FirstName = `Last Name`, # Mr. Vollman (or whoever compiles the data) has Last Name / First Name mixed up
+         Team_2018 = Team, 
+         GamesPlayed_2018 = GP, 
+         Goals_ES_2018 = G, 
+         Assists_Total_ES_2018 = A, 
+         Assists_Primary_ES_2018 = A1, 
+         Points_ES_2018 = PTS, 
+         Shots_ES_2018 = iSF__2, # using Shots from the NHL (not Corsica or NST)
+         PenaltyMinutes_ES_2018 = PIM, 
+         Hits_ES_2018 = iHF, # using Hits from the NHL
+         BlockedShots_ES_2018 = iBLK, # using Blocks from the NHL 
+         FaceoffWins_ES_2018 = iFOW, # using FOW from the NHL
+         FaceoffLosses_ES_2018 = iFOL, 
+         SetUpPasses_ES_2018 = Pass, 
+         Corsi_Team_ES_2018 = CF, # from NHL 
+         Corsi_Competition_ES_2018 = `CF/60.QoC`, 
+         Corsi_Teammates_ES_2018 = `CF/60.QoT`)
+
+```
+
+```{r Import_PowerPlay_2018}
+
+powerPlay_2018 <- read_excel(path = paste0(importPath, "NHL 2017-18.xls"), sheet = 'PP', skip = 2) %>%
+  select(LastName = `First Name`, 
+         FirstName = `Last Name`, 
+         Team_2018 = Team, 
+         Goals_PP_2018 = G, 
+         Assists_Total_PP_2018 = A, 
+         Assists_Primary_PP_2018 = A1, 
+         Points_PP_2018 = PTS, 
+         Shots_PP_2018 = iSF__1, # still using stats from NHL
+         PenaltyMinutes_PP_2018 = PIM, # not quite sure what the difference is between ES PIMs and PP PIMs
+         Hits_PP_2018 = iHF, 
+         BlockedShots_PP_2018 = iBLK__1, # not available from NHL, so using Corsica Hockey instead
+         FaceoffWins_PP_2018 = iFOW, 
+         FaceoffLosses_PP_2018 = iFOL, 
+         SetUpPasses_PP_2018 = Pass)
+
+```
+
+``` {r Import_ShortHanded_2018}
+
+penaltyKill_2018 <- read_excel(path = paste0(importPath, "NHL 2017-18.xls"), sheet = 'PK', skip = 2) %>%
+  select(LastName = `First Name`, 
+         FirstName = `Last Name`, 
+         Team_2018 = Team, 
+         Goals_PK_2018 = G, 
+         Assists_Total_PK_2018 = A, 
+         Assists_Primary_PK_2018 = A1, 
+         Points_PK_2018 = PTS, 
+         Shots_PK_2018 = iSF, # still using stats from NHL
+         PenaltyMinutes_PK_2018 = PIM,
+         Hits_PK_2018 = iHF, 
+         BlockedShots_PK_2018 = iBLK, 
+         FaceoffWins_PK_2018 = iFOW, 
+         FaceoffLosses_PK_2018 = iFOL, 
+         SetUpPasses_PK_2018 = Pass)
+
+```
+
+Readers who are familiar with fantasy hockey will be aware of the importance of finding players to fill each roster position. It would be no use having five of the best players in the league if they are all Centers or Left Wingers. By this logic it is very important to identify the positions, according to your fantasy hockey site, for every player. Unfortunately the data that is provided by Hockey Abstract does not have the Yahoo Fantasy Hockey positions as a column. This must be imported separately.
+
+Finding a list of the position for each player on the Yahoo Fantasy website proved to be a challenge. Currently I'm using the pre-draft rankings that are published by Yahoo, which also contains the position for each player at the start of the 2017-18 season. This list is not perfect but can act as a reasonable placeholder for the time being. I foresee a future article as part of the Fantasy Hockey Series that will tackle this issue.
+
+``` {r Import_Positions_2018}
+
+# ** This needs to be updated **
+positions_2018 <- read_excel(path = paste0(importPath, 'Yahoo Position and Ranking.xlsx'), sheet = 'Sheet1', col_names = c('NamePositionTeam')) %>%
+  separate(col = NamePositionTeam, into = c('Rank', 'NamePositionTeam'), sep = '\\.') %>%
+  separate(col = NamePositionTeam, into = c('Name', 'Position', 'Team'), sep = ',') %>%
+  separate(col = Name, into = c('FirstName', 'LastName'), sep = ' (?=[^ ]+$)') %>%
+  select(-Rank, -Team) %>%
+  mutate(FirstName = str_trim(FirstName), # need to trim the whitespace for joining players dataset 
+         LastName = str_trim(LastName))
+
+```
+
+As part of this exercise we will repeat the import process on data from the 2016-2017 regular season. The code has not been included in this article but is available in full at the GitHub repository. Repeating the process for other NHL seasons would follow a similar code structure. 
+
+```{r ImportData2017, warning = FALSE}
+
+# all situations
+allSituations_2017 <- read_excel(path = paste0(importPath, "NHL 2016-17.xls"), sheet = 'All Sits', skip = 2) %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2017 = Team,
+         NHLID = NHLid, # will be used for joining between different years of data
+         DateOfBirth = Born, 
+         CountryOfBirth = Cntry, 
+         Height_2017 = Ht, 
+         Weight_2017 = Wt, 
+         DraftRound = DftRd, 
+         DraftYear = DftYr,
+         StickHand = Hand,
+         Position_2017 = Position,
+         TimeOnIce_PerGame_2017 = `TOI/GP`, 
+         PlusMinus_AllSituations_2017 = `+/-`,
+         GameWinningGoals_AllSituations_2017 = GWG, 
+         DefensivePointShare_AllSituations_2017 = DPS, 
+         OffensivePointShare_AllSituations_2017 = OPS) %>%
+  mutate(Age_2017 = floor(parse_number(parse_date('2017-02-01') - parse_date(DateOfBirth)) / 365.25)) # this appears to be as close as possible to the 2018 calculation (reason for using this formula)
+
+# even strength
+evenStrength_2017 <- read_excel(path = paste0(importPath, "NHL 2016-17.xls"), sheet = '5on5', skip = 2) %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2017 = Team, 
+         GamesPlayed_2017 = GP, 
+         Goals_ES_2017 = G, 
+         Assists_Total_ES_2017 = A, 
+         Assists_Primary_ES_2017 = A1, 
+         Points_ES_2017 = PTS, 
+         Shots_ES_2017 = iSF, # Shots taken from Corsica Hockey; NHL data not available
+         PenaltyMinutes_ES_2017 = iPENT, 
+         Hits_ES_2017 = iHF, 
+         BlockedShots_ES_2017 = iBLK, 
+         FaceoffWins_ES_2017 = iFOW, # using FOW from the NHL
+         FaceoffLosses_ES_2017 = iFOL, 
+         SetUpPasses_ES_2017 = Pass, 
+         Corsi_Team_ES_2017 = CF, # from NHL 
+         Corsi_Competition_ES_2017 = `CF.QoC`, 
+         Corsi_Teammates_ES_2017 = `CF.QoT`) %>%
+  mutate(Shots_ES_2017 = parse_number(Shots_ES_2017))
+
+# powerplay
+powerPlay_2017 <- read_excel(path = paste0(importPath, "NHL 2016-17.xls"), sheet = '5on4', skip = 2) %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2017 = Team, 
+         Goals_PP_2017 = G, 
+         Assists_Total_PP_2017 = A, 
+         Assists_Primary_PP_2017 = A1, 
+         Points_PP_2017 = PTS, 
+         Shots_PP_2017 = iSF, # from Corsica Hockey
+         PenaltyMinutes_PP_2017 = iPENT, 
+         Hits_PP_2017 = iHF, 
+         BlockedShots_PP_2017 = iBLK, 
+         FaceoffWins_PP_2017 = iFOW, 
+         FaceoffLosses_PP_2017 = iFOL, 
+         SetUpPasses_PP_2017 = Pass)
+
+# short handed
+penaltyKill_2017 <- read_excel(path = paste0(importPath, "NHL 2016-17.xls"), sheet = '4on5', skip = 2) %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2017 = Team, 
+         Goals_PK_2017 = G, 
+         Assists_Total_PK_2017 = A, 
+         Assists_Primary_PK_2017 = A1, 
+         Points_PK_2017 = PTS, 
+         Shots_PK_2017 = iSF, # NHL stats available 
+         PenaltyMinutes_PK_2017 = iPENT,
+         Hits_PK_2017 = iHF, 
+         BlockedShots_PK_2017 = iBLK, 
+         FaceoffWins_PK_2017 = iFOW, 
+         FaceoffLosses_PK_2017 = iFOL, 
+         SetUpPasses_PK_2017 = Pass)
+
+# positions
+positions_2017 <- read_excel(path = paste0(importPath, "Yahoo Position and Ranking.xlsx"), sheet = 'Sheet1', col_names = c('NamePositionTeam')) %>%
+  separate(col = NamePositionTeam, into = c('Rank', 'NamePositionTeam'), sep = '\\.') %>%
+  separate(col = NamePositionTeam, into = c('Name', 'Position', 'Team'), sep = ',') %>%
+  separate(col = Name, into = c('FirstName', 'LastName'), sep = ' (?=[^ ]+$)') %>%
+  select(-Rank, -Team) %>%
+  mutate(FirstName = str_trim(FirstName), # need to trim the whitespace for joining players dataset 
+         LastName = str_trim(LastName))
+
+```
+
+```{r ImportData2016}
+
+allSituations_2016 <- read_excel(path = paste0(importPath, "NHL 2015-16.xls"), sheet = 'Main Page') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2016 = `End Team`,
+         DateOfBirth = DOB, 
+         CountryOfBirth = Ctry, 
+         Height_2016 = HT, 
+         Weight_2016 = Wt, 
+         DraftRound = Round, 
+         DraftYear = Draft,
+         StickHand = S,
+         Position_2016 = Pos,
+         TimeOnIce_PerGame_2016 = `TOI/G`, 
+         PlusMinus_AllSituations_2016 = `+/-`,
+         GameWinningGoals_AllSituations_2016 = GWG, 
+         PenaltyMinutes_AllSituations_2016 = PIM, 
+         DefensivePointShare_AllSituations_2016 = DPS, 
+         OffensivePointShare_AllSituations_2016 = OPS) %>%
+  mutate(Age_2016 = floor(parse_number(parse_date('2017-02-01') - parse_date(DateOfBirth)) / 365.25)) # this appears to be as close as possible to the 2018 calculation (reason for using this formula)
+
+evenStrength_2016 <- read_excel(path = paste0(importPath, "NHL 2015-16.xls"), sheet = 'Even Strength') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2016 = `End Team`, 
+         GamesPlayed_2016 = GP, 
+         Goals_ES_2016 = ESG, 
+         Assists_Total_ES_2016 = ESA, 
+         Assists_Primary_ES_2016 = `55A1`, 
+         Points_ES_2016 = ESP, 
+         ShotsTaken_ES_2016 = ESShot, 
+         ShotsMissed_ES_2016 = ESMiss,
+         Hits_ES_2016 = ESHitF, 
+         BlockedShots_ES_2016 = ESBlk, 
+         FaceoffWins_ES_2016 = ESFOW, 
+         FaceoffLosses_ES_2016 = ESFOL, 
+         SetUpPasses_ES_2016 = ESPass, 
+         Corsi_Team_ES_2016 = Corsi, 
+         Corsi_Competition_ES_2016 = `Cor%QoC`, 
+         Corsi_Teammates_ES_2016 = `Cor%QoT`) %>%
+  mutate(Shots_ES_2016 = ShotsTaken_ES_2016 - ShotsMissed_ES_2016) %>%
+  select(-ShotsTaken_ES_2016, 
+         -ShotsMissed_ES_2016)
+
+penaltyKill_2016 <- read_excel(path = paste0(importPath, "NHL 2015-16.xls"), sheet = 'Penalty Kill') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2016 = `End Team`, 
+         Goals_PK_2016 = SHG, 
+         Assists_Total_PK_2016 = SHA, 
+         Assists_Primary_PK_2016 = `45A1`, 
+         Points_PK_2016 = SHP, 
+         Shots_PK_2016 = `45Shots`, 
+         Hits_PK_2016 = SHHitF, 
+         BlockedShots_PK_2016 = SHBlk, 
+         FaceoffWins_PK_2016 = SHFOW, 
+         FaceoffLosses_PK_2016 = SHFOL, 
+         SetUpPasses_PK_2016 = SHPass)
+
+powerPlay_2016 <- read_excel(path = paste0(importPath, "NHL 2015-16.xls"), sheet = 'Power Play') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2016 = `End Team`, 
+         Goals_PP_2016 = PPG, 
+         Assists_Total_PP_2016 = PPA, 
+         Assists_Primary_PP_2016 = `54G`, 
+         Points_PP_2016 = PPP, 
+         Shots_PP_2016 = `54Shot`, 
+         Hits_PP_2016 = PPHitF, 
+         BlockedShots_PP_2016 = PPBlk, 
+         FaceoffWins_PP_2016 = PPFOW, 
+         FaceoffLosses_PP_2016 = PPFOL, 
+         SetUpPasses_PP_2016 = PPPass)
+
+```
+
+```{r ImportData2015}
+
+allSituations_2015 <- read_excel(path = paste0(importPath, "NHL 2014-15.xls"), sheet = 'Main Page') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2015 = `End Team`,
+         DateOfBirth = DOB, 
+         CountryOfBirth = Ctry, 
+         Height_2015 = HT, 
+         Weight_2015 = Wt, 
+         DraftRound = Round, 
+         DraftYear = Draft,
+         StickHand = S,
+         Position_2015 = Pos,
+         TimeOnIce_PerGame_2015 = `TOI/G`, 
+         PlusMinus_AllSituations_2015 = `+/-`,
+         GameWinningGoals_AllSituations_2015 = GWG, 
+         PenaltyMinutes_AllSituations_2015 = PIM, 
+         DefensivePointShare_AllSituations_2015 = DPS, 
+         OffensivePointShare_AllSituations_2015 = OPS) %>%
+  mutate(Age_2015 = floor(parse_number(parse_date('2017-02-01') - parse_date(DateOfBirth)) / 365.25)) # this appears to be as close as possible to the 2018 calculation (reason for using this formula)
+
+evenStrength_2015 <- read_excel(path = paste0(importPath, "NHL 2014-15.xls"), sheet = 'Even Strength') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`, 
+         Team_2015 = `End Team`,
+         GamesPlayed_2015 = GP, 
+         Goals_ES_2015 = ESG, 
+         Assists_Total_ES_2015 = ESA, 
+         Assists_Primary_ES_2015 = `55A1`, 
+         Points_ES_2015 = ESP, 
+         ShotsTaken_ES_2015 = ESShot, 
+         ShotsMissed_ES_2015 = ESMiss,
+         Hits_ES_2015 = ESHitF, 
+         BlockedShots_ES_2015 = ESBlk, 
+         FaceoffWins_ES_2015 = ESFOW, 
+         FaceoffLosses_ES_2015 = ESFOL, 
+         SetUpPasses_ES_2015 = ESPass, 
+         Corsi_Team_ES_2015 = Corsi, 
+         Corsi_Competition_ES_2015 = `Cor%QoC`, 
+         Corsi_Teammates_ES_2015 = `Cor%QoT`) %>%
+  mutate(Shots_ES_2015 = ShotsTaken_ES_2015 - ShotsMissed_ES_2015) %>%
+  select(-ShotsTaken_ES_2015, 
+         -ShotsMissed_ES_2015)
+
+penaltyKill_2015 <- read_excel(path = paste0(importPath, "NHL 2014-15.xls"), sheet = 'Penalty Kill') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2015 = `End Team`, 
+         Goals_PK_2015 = SHG, 
+         Assists_Total_PK_2015 = SHA, 
+         Assists_Primary_PK_2015 = `45A1`, 
+         Points_PK_2015 = SHP, 
+         ShotsTaken_PK_2015 = SHShot, 
+         ShotsMissed_PK_2015 = SHMiss,
+         Hits_PK_2015 = SHHitF, 
+         BlockedShots_PK_2015 = SHBlk, 
+         FaceoffWins_PK_2015 = SHFOW, 
+         FaceoffLosses_PK_2015 = SHFOL, 
+         SetUpPasses_PK_2015 = SHPass) %>%
+  mutate(Shots_PK_2015 = ShotsTaken_PK_2015 - ShotsMissed_PK_2015) %>%
+  select(-ShotsTaken_PK_2015, 
+         -ShotsMissed_PK_2015)
+
+powerPlay_2015 <- read_excel(path = paste0(importPath, "NHL 2014-15.xls"), sheet = 'Power Play') %>%
+  select(LastName = `Last Name`, 
+         FirstName = `First Name`,
+         Team_2015 = `End Team`, 
+         Goals_PP_2015 = PPG, 
+         Assists_Total_PP_2015 = PPA, 
+         Assists_Primary_PP_2015 = `54G`, 
+         Points_PP_2015 = PPP, 
+         ShotsTaken_PP_2015 = PPShot, 
+         ShotsMissed_PP_2015 = PPMiss,
+         Hits_PP_2015 = PPHitF, 
+         BlockedShots_PP_2015 = PPBlk, 
+         FaceoffWins_PP_2015 = PPFOW, 
+         FaceoffLosses_PP_2015 = PPFOL, 
+         SetUpPasses_PP_2015 = PPPass) %>%
+  mutate(Shots_PP_2015 = ShotsTaken_PP_2015 - ShotsMissed_PP_2015) %>%
+  select(-ShotsTaken_PP_2015, 
+         -ShotsMissed_PP_2015)
+
+```
+
+## Clean Data
+
+All things considered, this data does not require much cleansing. The steps we must take involve joining all our data frames for the same season, as well as the list of Yahoo positions. We are using left joins, since there were very rare cases where a player did not have data in one of the Even Strength, Powerplay, or Penalty Kill tabs. Further we are going to rely on the JoinCheck function from my [INSERT PACKAGE NAME] package. This should give us an indication if there are any issues with us using a left join on the LastName, FirstName, and Team columns.
+
+``` {r CleanData2018}
+
+# join checks
+joinCheck_ES <- JoinCheck(Left = allSituations_2018, Right = evenStrength_2018, By = c('LastName', 'FirstName', 'Team_2018'))
+joinCheck_PP <- JoinCheck(Left = allSituations_2018, Right = powerPlay_2018, By = c('LastName', 'FirstName', 'Team_2018'))
+joinCheck_PK <- JoinCheck(Left = allSituations_2018, Right = penaltyKill_2018, By = c('LastName', 'FirstName', 'Team_2018'))
+
+# confirm that there are no duplicate values in the data frames we plan on joining
+if (any(c(joinCheck_ES$LeftHandSide_Duplicates_Identifier, joinCheck_ES$RightHandSide_Duplicates_Identifier, joinCheck_PP$RightHandSide_Duplicates_Identifier, joinCheck_PK$RightHandSide_Duplicates_Identifier))) {
+  stop ('Duplicate values have been detected.')
+}
+
+# join all into one data frame
+players_2018 <- list(allSituations_2018, evenStrength_2018, powerPlay_2018, penaltyKill_2018) %>%
+  reduce(left_join, by = c('LastName', 'FirstName', 'Team_2018'))
+
+# perform a join check before joining the positions_2018 data frame
+positions_JoinCheck <- JoinCheck(Left = players_2018, Right = positions_2018, By = c('LastName', 'FirstName'))
+# we can see that there are duplicates in players dataset, when looking by firstname/lastname only
+# two Sebastian Aho
+# just going to manually override the results for the Aho we don't care about
+if (positions_JoinCheck$LeftHandSide_Duplicates_Identifier) {
+  players_2018[positions_JoinCheck$LeftHandSide_Duplicates_Index, ]
+  warning('There were duplicate values detected in the players_2018 data frame. Additional steps may be required.')
+}
+# this is the check that should cause an error if found
+# this might be triggered if Sebastian Aho is in this data frame
+if (positions_JoinCheck$RightHandSide_Duplicates_Identifier) {
+  stop('Duplicate values detect in the positions_2018 data frame.')
+}
+
+# create final dataset to be used in our analysis
+players_2018 <- players_2018 %>%
+  # left_join(positions_2018, by = c('LastName', 'FirstName')) %>% NOT CURRENTLY JOINING THIS POSITION DATA -- not using for fantasy analysis
+  mutate(Position_2018 = if_else(FirstName == 'Sebastian' & LastName == 'Aho' & Team_2018 == 'NYI', NA_character_, Position_2018), 
+         Goals_AllSituations_2018 = Goals_ES_2018 + Goals_PK_2018 + Goals_PP_2018, 
+         Assists_Total_AllSituations_2018 = Assists_Total_ES_2018 + Assists_Total_PK_2018 + Assists_Total_PP_2018, 
+         Assists_Primary_AllSituations_2018 = Assists_Primary_ES_2018 + Assists_Primary_PK_2018 + Assists_Primary_PP_2018, 
+         Points_AllSituations_2018 = Points_ES_2018 + Points_PK_2018 + Points_PP_2018, 
+         Shots_AllSituations_2018 = Shots_ES_2018 + Shots_PK_2018 + Shots_PP_2018, 
+         PenaltyMinutes_AllSituations_2018 = PenaltyMinutes_ES_2018 + PenaltyMinutes_PK_2018 + PenaltyMinutes_PP_2018, 
+         Hits_AllSituations_2018 = Hits_ES_2018 + Hits_PK_2018 + Hits_PP_2018, 
+         BlockedShots_AllSituations_2018 = BlockedShots_ES_2018 + BlockedShots_PK_2018 + BlockedShots_PP_2018, 
+         FaceoffWins_AllSituations_2018 = FaceoffWins_ES_2018 + FaceoffWins_PK_2018 + FaceoffWins_PP_2018, 
+         FaceoffLosses_AllSituations_2018 = FaceoffLosses_ES_2018 + FaceoffLosses_PK_2018 + FaceoffLosses_PP_2018, 
+         SetUpPasses_AllSituations_2018 = SetUpPasses_ES_2018 + SetUpPasses_PK_2018 + SetUpPasses_PP_2018)
+
+
+```
+
+```{r CleanData2017}
+
+# join checks
+joinCheck_ES <- JoinCheck(Left = allSituations_2017, Right = evenStrength_2017, By = c('LastName', 'FirstName', 'Team_2017'))
+joinCheck_PP <- JoinCheck(Left = allSituations_2017, Right = powerPlay_2017, By = c('LastName', 'FirstName', 'Team_2017'))
+joinCheck_PK <- JoinCheck(Left = allSituations_2017, Right = penaltyKill_2017, By = c('LastName', 'FirstName', 'Team_2017'))
+
+# confirm that there are no duplicate values in the data frames we plan on joining
+if (any(c(joinCheck_ES$LeftHandSide_Duplicates_Identifier, joinCheck_ES$RightHandSide_Duplicates_Identifier, joinCheck_PP$RightHandSide_Duplicates_Identifier, joinCheck_PK$RightHandSide_Duplicates_Identifier))) {
+  stop ('Duplicate values have been detected.')
+}
+
+# join all into one data frame
+players_2017 <- list(allSituations_2017, evenStrength_2017, powerPlay_2017, penaltyKill_2017) %>%
+  reduce(left_join, by = c('LastName', 'FirstName', 'Team_2017'))
+
+# perform a join check before joining the positions_2017 data frame
+positions_JoinCheck <- JoinCheck(Left = players_2017, Right = positions_2017, By = c('LastName', 'FirstName'))
+# we can see that there are duplicates in players dataset, when looking by firstname/lastname only
+# two Sebastian Aho
+# just going to manually override the results for the Aho we don't care about
+if (positions_JoinCheck$LeftHandSide_Duplicates_Identifier) {
+  players_2017[positions_JoinCheck$LeftHandSide_Duplicates_Index, ]
+  warning('There were duplicate values detected in the players_2017 data frame. Additional steps may be required.')
+}
+# this is the check that should cause an error if found
+# this might be triggered if Sebastian Aho is in this data frame
+if (positions_JoinCheck$RightHandSide_Duplicates_Identifier) {
+  stop('Duplicate values detect in the positions_2017 data frame.')
+}
+
+# create final dataset to be used in our analysis
+players_2017 <- players_2017 %<>%
+  # left_join(positions_2017, by = c('LastName', 'FirstName')) %>%
+  mutate(Position_2017 = if_else(FirstName == 'Sebastian' & LastName == 'Aho' & Team_2017 == 'NYI', NA_character_, Position_2017), 
+         Goals_AllSituations_2017 = Goals_ES_2017 + Goals_PK_2017 + Goals_PP_2017, 
+         Assists_Total_AllSituations_2017 = Assists_Total_ES_2017 + Assists_Total_PK_2017 + Assists_Total_PP_2017, 
+         Assists_Primary_AllSituations_2017 = Assists_Primary_ES_2017 + Assists_Primary_PK_2017 + Assists_Primary_PP_2017, 
+         Points_AllSituations_2017 = Points_ES_2017 + Points_PK_2017 + Points_PP_2017, 
+         Shots_AllSituations_2017 = Shots_ES_2017 + Shots_PK_2017 + Shots_PP_2017, 
+         PenaltyMinutes_AllSituations_2017 = PenaltyMinutes_ES_2017 + PenaltyMinutes_PK_2017 + PenaltyMinutes_PP_2017, 
+         Hits_AllSituations_2017 = Hits_ES_2017 + Hits_PK_2017 + Hits_PP_2017, 
+         BlockedShots_AllSituations_2017 = BlockedShots_ES_2017 + BlockedShots_PK_2017 + BlockedShots_PP_2017, 
+         FaceoffWins_AllSituations_2017 = FaceoffWins_ES_2017 + FaceoffWins_PK_2017 + FaceoffWins_PP_2017, 
+         FaceoffLosses_AllSituations_2017 = FaceoffLosses_ES_2017 + FaceoffLosses_PK_2017 + FaceoffLosses_PP_2017, 
+         SetUpPasses_AllSituations_2017 = SetUpPasses_ES_2017 + SetUpPasses_PK_2017 + SetUpPasses_PP_2017)
+
+```
+
+```{r CleanData2016}
+
+# join checks
+joinCheck_ES <- JoinCheck(Left = allSituations_2016, Right = evenStrength_2016, By = c('LastName', 'FirstName', 'Team_2016'))
+joinCheck_PP <- JoinCheck(Left = allSituations_2016, Right = powerPlay_2016, By = c('LastName', 'FirstName', 'Team_2016'))
+joinCheck_PK <- JoinCheck(Left = allSituations_2016, Right = penaltyKill_2016, By = c('LastName', 'FirstName', 'Team_2016'))
+
+# confirm that there are no duplicate values in the data frames we plan on joining
+if (any(c(joinCheck_ES$LeftHandSide_Duplicates_Identifier, joinCheck_ES$RightHandSide_Duplicates_Identifier, joinCheck_PP$RightHandSide_Duplicates_Identifier, joinCheck_PK$RightHandSide_Duplicates_Identifier))) {
+  stop ('Duplicate values have been detected.')
+}
+
+# join all into one data frame
+players_2016 <- list(allSituations_2016, evenStrength_2016, powerPlay_2016, penaltyKill_2016) %>%
+  reduce(left_join, by = c('LastName', 'FirstName', 'Team_2016'))
+
+# create final dataset to be used in our analysis
+players_2016 <- players_2016 %<>%
+  mutate(Position_2016 = if_else(FirstName == 'Sebastian' & LastName == 'Aho' & Team_2016 == 'NYI', NA_character_, Position_2016), 
+         Goals_AllSituations_2016 = Goals_ES_2016 + Goals_PK_2016 + Goals_PP_2016, 
+         Assists_Total_AllSituations_2016 = Assists_Total_ES_2016 + Assists_Total_PK_2016 + Assists_Total_PP_2016, 
+         Assists_Primary_AllSituations_2016 = Assists_Primary_ES_2016 + Assists_Primary_PK_2016 + Assists_Primary_PP_2016, 
+         Points_AllSituations_2016 = Points_ES_2016 + Points_PK_2016 + Points_PP_2016, 
+         Shots_AllSituations_2016 = Shots_ES_2016 + Shots_PK_2016 + Shots_PP_2016, 
+         Hits_AllSituations_2016 = Hits_ES_2016 + Hits_PK_2016 + Hits_PP_2016, 
+         BlockedShots_AllSituations_2016 = BlockedShots_ES_2016 + BlockedShots_PK_2016 + BlockedShots_PP_2016, 
+         FaceoffWins_AllSituations_2016 = FaceoffWins_ES_2016 + FaceoffWins_PK_2016 + FaceoffWins_PP_2016, 
+         FaceoffLosses_AllSituations_2016 = FaceoffLosses_ES_2016 + FaceoffLosses_PK_2016 + FaceoffLosses_PP_2016, 
+         SetUpPasses_AllSituations_2016 = SetUpPasses_ES_2016 + SetUpPasses_PK_2016 + SetUpPasses_PP_2016)
+
+```
+
+```{r CleanData2015}
+
+# join checks
+joinCheck_ES <- JoinCheck(Left = allSituations_2015, Right = evenStrength_2015, By = c('LastName', 'FirstName', 'Team_2015'))
+joinCheck_PP <- JoinCheck(Left = allSituations_2015, Right = powerPlay_2015, By = c('LastName', 'FirstName', 'Team_2015'))
+joinCheck_PK <- JoinCheck(Left = allSituations_2015, Right = penaltyKill_2015, By = c('LastName', 'FirstName', 'Team_2015'))
+
+# confirm that there are no duplicate values in the data frames we plan on joining
+if (any(c(joinCheck_ES$LeftHandSide_Duplicates_Identifier, joinCheck_ES$RightHandSide_Duplicates_Identifier, joinCheck_PP$RightHandSide_Duplicates_Identifier, joinCheck_PK$RightHandSide_Duplicates_Identifier))) {
+  stop ('Duplicate values have been detected.')
+}
+
+# join all into one data frame
+players_2015 <- list(allSituations_2015, evenStrength_2015, powerPlay_2015, penaltyKill_2015) %>%
+  reduce(left_join, by = c('LastName', 'FirstName', 'Team_2015'))
+
+# create final dataset to be used in our analysis
+players_2015 <- players_2015 %<>%
+  mutate(Position_2015 = if_else(FirstName == 'Sebastian' & LastName == 'Aho' & Team_2015 == 'NYI', NA_character_, Position_2015), 
+         Goals_AllSituations_2015 = Goals_ES_2015 + Goals_PK_2015 + Goals_PP_2015, 
+         Assists_Total_AllSituations_2015 = Assists_Total_ES_2015 + Assists_Total_PK_2015 + Assists_Total_PP_2015, 
+         Assists_Primary_AllSituations_2015 = Assists_Primary_ES_2015 + Assists_Primary_PK_2015 + Assists_Primary_PP_2015, 
+         Points_AllSituations_2015 = Points_ES_2015 + Points_PK_2015 + Points_PP_2015, 
+         Shots_AllSituations_2015 = Shots_ES_2015 + Shots_PK_2015 + Shots_PP_2015, 
+         Hits_AllSituations_2015 = Hits_ES_2015 + Hits_PK_2015 + Hits_PP_2015, 
+         BlockedShots_AllSituations_2015 = BlockedShots_ES_2015 + BlockedShots_PK_2015 + BlockedShots_PP_2015, 
+         FaceoffWins_AllSituations_2015 = FaceoffWins_ES_2015 + FaceoffWins_PK_2015 + FaceoffWins_PP_2015, 
+         FaceoffLosses_AllSituations_2015 = FaceoffLosses_ES_2015 + FaceoffLosses_PK_2015 + FaceoffLosses_PP_2015, 
+         SetUpPasses_AllSituations_2015 = SetUpPasses_ES_2015 + SetUpPasses_PK_2015 + SetUpPasses_PP_2015)
+
+```
+
+Need to align all year's coding to be consistent.
+
+```{r Positions}
+
+players_2018 <- players_2018 %>%
+  mutate(Position_2018 = if_else(Position_2018 == 'C/RW', 'RW/C', Position_2018))
+
+players_2017 <- players_2017 %>%
+  mutate(Position_2017 = if_else(Position_2017 %in% c('C/LW/RW', 'LW/C/RW', 'LW/RW/C', 'RW/C/LW', 'RW/LW/C'), 'C/RW/LW', 
+                            if_else(Position_2017 == 'C/RW', 'RW/C', 
+                                    if_else(Position_2017 %in% c('C/LW', 'C/LW/C'), 'LW/C', 
+                                            if_else(str_detect(Position_2017, 'D'), 'D', # anyone who might be F/D will just be treated as Defencemen
+                                                    if_else(Position_2017 == 'RW/LW', 'LW/RW', 
+                                                            Position_2017))))))
+
+players_2016 <- players_2016 %>%
+  mutate(Position_2016 = if_else(Position_2016 %in% c('C/LW/RW', 'LW/C/RW', 'LW/RW/C', 'RW/C/LW', 'RW/LW/C'), 'C/RW/LW', 
+                            if_else(Position_2016 == 'C/RW', 'RW/C', 
+                                    if_else(Position_2016 == 'C/LW', 'LW/C', 
+                                            if_else(str_detect(Position_2016, 'D'), 'D', # anyone who might be F/D will just be treated as Defencemen
+                                                    if_else(Position_2016 == 'RW/LW', 'LW/RW', 
+                                                            if_else(Position_2016 == 'C/N', 'C', 
+                                                                    Position_2016)))))))
+
+players_2015 <- players_2015 %>%
+  mutate(Position_2015 = if_else(Position_2015 %in% c('C/LW/RW', 'LW/C/RW', 'LW/RW/C', 'RW/C/LW', 'RW/LW/C'), 'C/RW/LW', 
+                            if_else(Position_2015 == 'C/RW', 'RW/C', 
+                                    if_else(Position_2015 == 'C/LW', 'LW/C', 
+                                            if_else(str_detect(Position_2015, 'D'), 'D', # anyone who might be F/D will just be treated as Defencemen
+                                                    if_else(Position_2015 == 'RW/LW', 'LW/RW', 
+                                                            Position_2015))))))
+
+```
+
+## Final Data Frames
+
+Now that the data has been imported and cleaned for both the 2016-17 and 2017-18 seasons, we can build our final data frames. Three separate formats will be created:
+
+(i) Wide Format - there will be a column for each year.
+
+(ii) Long Format - there will be a column for each statistic, but two rows for each player (one row for each year).
+
+(iii) List Format - an R list, where each element represents one NHL season.
+
+The subsequent articles in the Fantasy Hockey Series will use a combination of all three formats.
+
+```{r JoinYears}
+
+# detect if there are any duplicates in either dataset since we are doing a full_join()
+yearsJoin <- JoinCheck(Left = players_2018, Right = players_2017, By = 'NHLID')
+if (yearsJoin$RightHandSide_Duplicates_Identifier | yearsJoin$LeftHandSide_Duplicates_Identifier) {
+  warning ('Duplicate values detected.')
+}
+
+# if there are no duplicates in joining 2018/2017 and 2016 then we don't have to check if any duplicates between 2016 and 2015
+yearsJoin_20182016 <- JoinCheck(Left = players_2018, Right = players_2016, By = c('LastName', 'FirstName'))
+yearsJoin_20172016 <- JoinCheck(Left = players_2017, Right = players_2016, By = c('LastName', 'FirstName'))
+yearsJoin_20182015 <- JoinCheck(Left = players_2018, Right = players_2015, By = c('LastName', 'FirstName'))
+
+# we're seeing duplicates in 2018 because of Sebastian Aho
+# this should not cause any problems even with the full join since this player does not exist in data for years before 2017
+if (yearsJoin_20182016$RightHandSide_Duplicates_Identifier | yearsJoin_20182016$LeftHandSide_Duplicates_Identifier) {
+  warning ('Duplicate values detected.')
+}
+if (yearsJoin_20172016$RightHandSide_Duplicates_Identifier | yearsJoin_20172016$LeftHandSide_Duplicates_Identifier) {
+  warning ('Duplicate values detected.')
+}
+if (yearsJoin_20182015$RightHandSide_Duplicates_Identifier | yearsJoin_20182015$LeftHandSide_Duplicates_Identifier) {
+  warning ('Duplicate values detected.')
+}
+
+players_Wide <- players_2018 %>%
+  full_join(players_2017 %>% select(-LastName, -FirstName, -Team_2017, -CountryOfBirth, -DraftRound, -DateOfBirth), by = 'NHLID') %>%
+  full_join(players_2016 %>% select(-Team_2016, -CountryOfBirth, -DraftRound, -DateOfBirth), by = c('LastName', 'FirstName')) %>%
+  full_join(players_2015 %>% select(-Team_2015, -CountryOfBirth, -DraftRound, -DateOfBirth), by = c('LastName', 'FirstName'))
+
+```
+
+
+```{r AppendYears}
+
+# perform this step so that each year has it's own row of data (i.e. long format)
+# only one set of columns for "PreviousYear", since this is all we'll be using (for now) in the predictive model
+
+# 2018 rows
+forLong_2018 <- players_2018 %>% 
+  select(FirstName, 
+         LastName,
+         NHLID,
+         CountryOfBirth,
+         DraftRound,
+         DraftYear,
+         Points_CurrentYear = Points_AllSituations_2018, 
+         GamesPlayed_CurrentYear = GamesPlayed_2018) %>%
+  mutate(Points_CurrentYear = if_else(is.na(Points_CurrentYear), 0, Points_CurrentYear)) %>%
+  left_join(players_2017 %>% select(-LastName, -FirstName, -Team_2017, -CountryOfBirth, -DraftRound, -DraftYear, -DateOfBirth), by = 'NHLID') %>%
+  mutate(Year = 2018, 
+         YearsSinceDraft = 2018 - DraftYear, 
+         Undrafted = if_else(is.na(DraftYear), 1, 0))
+
+previousYearColumnNames <- str_replace(names(forLong_2018)[str_detect(names(forLong_2018), '_2017')], '_2017', '_PreviousYear')
+names(forLong_2018)[str_detect(names(forLong_2018), '_2017')] <- previousYearColumnNames
+
+# 2017 rows
+forLong_2017 <- players_2017 %>% 
+  select(FirstName, 
+         LastName, 
+         CountryOfBirth,
+         DraftRound,
+         DraftYear,
+         Points_CurrentYear = Points_AllSituations_2017, 
+         GamesPlayed_CurrentYear = GamesPlayed_2017) %>%
+  mutate(Points_CurrentYear = if_else(is.na(Points_CurrentYear), 0, Points_CurrentYear)) %>%
+  left_join(players_2016 %>% select(-Team_2016, -CountryOfBirth, -DraftRound, -DraftYear, -DateOfBirth), by = c('FirstName', 'LastName')) %>%
+  mutate(Year = 2017, 
+         YearsSinceDraft = 2017 - DraftYear, 
+         Undrafted = if_else(is.na(DraftYear), 1, 0))
+
+previousYearColumnNames <- str_replace(names(forLong_2017)[str_detect(names(forLong_2017), '_2016')], '_2016', '_PreviousYear')
+names(forLong_2017)[str_detect(names(forLong_2017), '_2016')] <- previousYearColumnNames
+
+# 2016 rows
+forLong_2016 <- players_2016 %>% 
+  select(FirstName, 
+         LastName, 
+         CountryOfBirth,
+         DraftRound,
+         DraftYear,
+         Points_CurrentYear = Points_AllSituations_2016, 
+         GamesPlayed_CurrentYear = GamesPlayed_2016) %>%
+  mutate(Points_CurrentYear = if_else(is.na(Points_CurrentYear), 0, Points_CurrentYear)) %>%
+  left_join(players_2015 %>% select(-Team_2015, -CountryOfBirth, -DraftRound, -DraftYear, -DateOfBirth), by = c('FirstName', 'LastName')) %>%
+  mutate(Year = 2016, 
+         YearsSinceDraft = 2016 - DraftYear, 
+         Undrafted = if_else(is.na(DraftYear), 1, 0))
+
+previousYearColumnNames <- str_replace(names(forLong_2016)[str_detect(names(forLong_2016), '_2015')], '_2015', '_PreviousYear')
+names(forLong_2016)[str_detect(names(forLong_2016), '_2015')] <- previousYearColumnNames
+
+# join all years
+players_Long <- bind_rows(forLong_2018, forLong_2017, forLong_2016)
+
+```
+
+
+```{r ListYears}
+
+# perform this step so that future operations can be easy to duplicate across many years
+
+players_List <- list(Players_2018 = players_2018, 
+                     Players_2017 = players_2017, 
+                     Players_2016 = players_2016, 
+                     Players_2015 = players_2015)
+
+
+```
+
+## Export Data
+
+Each of the three data formats will be exported into different files. rds files will be used for importing back into R (speed and class) and the csv/xlsx files will be easier for others to use with other software.
+
+```{r ExportData}
+
+# export wide data
+write_rds(players_Wide, 
+          paste0(exportPath, 'Players_Wide_', Sys.Date(), '.rds'))
+write_csv(players_Wide, 
+          paste0(exportPath, 'Players_Wide_', Sys.Date(), '.csv'))
+
+# export long data
+write_rds(players_Long, 
+          paste0(exportPath, 'Players_Long_', Sys.Date(), '.rds'))
+write_csv(players_Long, 
+          paste0(exportPath, 'Players_Long_', Sys.Date(), '.csv'))
+
+# export list
+write_rds(players_List, 
+          paste0(exportPath, 'Players_List_', Sys.Date(), '.rds'))
+WriteXLS(players_List, 
+         paste0(exportPath, 'Players_List_', Sys.Date(), '.xlsx'), 
+         SheetNames = names(players_List))
+
+
+```
+

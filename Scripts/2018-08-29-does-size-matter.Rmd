@@ -1,0 +1,182 @@
+---
+title: "Does Size Matter?"
+date: "2018-08-28"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include = FALSE}
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(readxl)
+library(knitr)
+
+importPath1 <- 'C:/Users/harri/Documents/Blog - KnucklePuck/05. Export/'
+importPath2 <- 'C:/Users/harri/Documents/Blog - KnucklePuck/04. Rawdata/'
+
+```
+
+## Introduction
+
+If you've ever been fortunate enough to watch an NHL game from the lower bowl, perhaps even right up against the glass, you've noticed that NHL players are much bigger than they appear on TV. But its worth asking ourselves, has the league always been like this? And is measuring over 6 feet tall and weighing over 200 lbs an asset, or a necessity?
+
+If you were to ask me, I'd predict that the smaller player is playing a bigger role in today's NHL than he did 10-15 years ago. Patrick Kane, Jonny Gaudreau, Mitch Marner, and Mats Zuccarello to name a few forwards, and Erik Karlsson, Torey Krug and Ryan Ellis on defence, are all putting up a lot of points. In this article we will test whether this phenomenon is supported by the data and whether the best players in the NHL today are smaller or bigger than the rest of the league.
+
+```{r ImportData}
+
+# this gives us a list with 2018 in the first element and 2017 in the second element
+players <- read_rds(paste0(importPath1, 'Players_List_2018-08-18.rds'))
+
+# this gives us the wide data (to compare from previous year)
+players_Wide <- read_rds(paste0(importPath1, 'Players_Wide_2018-08-18.rds'))
+
+# call each of these out individually from the full `players` list
+players_2018 <- players$Players_2018
+players_2017 <- players$Players_2017
+players_2016 <- players$Players_2016
+players_2015 <- players$Players_2015
+
+# player size data taken from https://hockey-graphs.com/2015/02/19/nhl-player-size-from-1917-18-to-2014-15-a-brief-look/
+# in turn this was taken from www.hockey-reference.com
+playerSize <- read_excel(paste0(importPath2, 'SizeSummary_BySeason.xlsx')) %>%
+  rename(Height_Average = `Ht Avg`, Height_SD = `Ht SD`, Weight_Average = `Wt Avg`, Weight_SD = `Wt SD`)
+
+# goals (and a few other stats) by season from www.hockey-reference.com 
+goalSummary <- read_excel(paste0(importPath2, 'GoalsSummary_BySeason.xlsx')) %>%
+  select(Season, GamesPlayed = GP, Goals = G)
+
+```
+
+## Average Height and Weight in the NHL since inception
+
+The average height in the NHL was consistently trending upwards until around the year 2000. It has since plateaued around 73 inches (6'3"). 
+
+The average weight in the NHL was also consistently trending upwards until a ceiling of 206.3 lbs was reached in the 2005-06 season. The average weight has come back down to around the league average that we saw in the early 1990s. 
+
+```{r Size_HistoricalSummary}
+
+playerSize <- playerSize %>%
+  mutate(Year = parse_integer(str_sub(Season, 0, 4)) + 1) %>%
+  add_row(Year = 2016, Height_Average = mean(players_2016$Height_2016), Height_SD = sd(players_2016$Height_2016), Weight_Average = mean(players_2016$Weight_2016), Weight_SD = sd(players_2016$Weight_2016)) %>%
+  add_row(Year = 2017, Height_Average = mean(players_2017$Height_2017), Height_SD = sd(players_2017$Height_2017), Weight_Average = mean(players_2017$Weight_2017), Weight_SD = sd(players_2017$Weight_2017)) %>%
+  add_row(Year = 2018, Height_Average = mean(players_2018$Height_2018), Height_SD = sd(players_2018$Height_2018), Weight_Average = mean(players_2018$Weight_2018), Weight_SD = sd(players_2018$Weight_2018))
+
+playerSize_Long <- playerSize %>%
+  select(Year, Height = Height_Average, Weight = Weight_Average) %>%
+  gather(key = 'SizeKey', value = 'SizeValue', Height:Weight)
+
+# # keeping height and weight as separate graphs since they have different scales
+# playerSize %>%
+#   ggplot(aes(x = Year, y = Height_Average)) +
+#   geom_line(size = 2, alpha = 0.7, color = '#041E42') +
+#   theme_classic() + 
+#   theme(panel.grid.major = element_line(color = 'gray70', size = 0.1, linetype = 'longdash'), 
+#         axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1)) +
+#   scale_y_continuous(limits = c(65, 74)) +
+#   scale_x_continuous(breaks = seq(1900, 2020, by = 5), limits = c(1918, 2020)) +
+#   labs(title = 'Average Height in the NHL', subtitle = 'All skaters with at least one game played', x = 'Year', y = 'Height (in)')
+#   
+# playerSize %>%
+#   ggplot(aes(x = Year, y = Weight_Average)) +
+#   geom_line(size = 2, alpha = 0.7, color = '#FF4C00') +
+#   theme_classic() + 
+#   theme(panel.grid.major = element_line(color = 'gray70', size = 0.1, linetype = 'longdash'), 
+#         axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1)) +
+#   scale_y_continuous(limits = c(160, 210)) +
+#   scale_x_continuous(breaks = seq(1900, 2020, by = 5), limits = c(1918, 2020)) +
+#   labs(title = 'Average Weight in the NHL', subtitle = 'All skaters with at least one game played', x = 'Year', y = 'Weight (lbs)')
+
+gg_HeightWeight <- playerSize_Long %>%
+  ggplot(aes(x = Year, y = SizeValue, color = SizeKey)) +
+  geom_line(size = 1.5, alpha = 0.7) +
+  theme_classic() +
+  theme(panel.grid.major = element_line(color = 'gray70', size = 0.1, linetype = 'longdash'),
+        axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1), 
+        axis.title.y = element_blank(), 
+        legend.position = 'none') +
+  scale_color_manual(values = c('#041E42', '#FF4C00')) +
+  scale_x_continuous(breaks = seq(1900, 2020, by = 10), limits = c(1918, 2020)) +
+  labs(title = 'Average Height/Weight in the NHL', subtitle = 'All skaters with at least one game played', x = 'Year') +
+  facet_wrap(~ SizeKey, scales = 'free_y', ncol = 2)
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-08-28-does-size-matter/HeightWeightTrend.png', 
+    height = 6, width = 10, units = 'in', res = 800)
+print(gg_HeightWeight)
+dev.off()
+
+```
+
+* Note the the scales on the y-axis of each graph. Differences are smaller than they appear. 
+
+## Comparing the League to the 2017-18 Top 15 Point Scorers
+
+The table below shows the height and weight for the top 15 players in the NHL for the 2017-18 season (ranked by Points Per Game). At first glance we are not seeing a distinct trend among the top 15 hockey players. The larger players, Alex Ovechkin (6'3", 235 lbs.) and Blake Wheeler (6'5", 225 lbs.), are cancelled out by the smaller players, Nikita Kucherov (5'11", 178 lbs.) and Brad Marchand (5'9", 181 lbs.).
+
+The average height of the top 15 players is 73.27 inches and the median is 73 inches. This mirrors the league average of 73 inches. The average weight of the top 15 players is 204.2 lbs and the median is 202 lbs, slightly higher than the league average of 199.7 lbs. The top 15 point producers are more or less the average height and weight of the league. 
+
+```{r TopPlayers}
+
+top15Players <- players_2018 %>%
+  filter(GamesPlayed_2018 > 20) %>%
+  mutate(`Points Per Game` = round(Points_AllSituations_2018 / GamesPlayed_2018, 3)) %>%
+  select(`First Name` = FirstName, 
+         `Last Name` = LastName, 
+         `Points` = Points_AllSituations_2018, 
+         `Points Per Game`, 
+         Height = Height_2018, 
+         Weight = Weight_2018) %>%
+  arrange(desc(`Points Per Game`)) %>%
+  top_n(15, `Points Per Game`)
+
+kable(top15Players)
+
+```
+
+## The Relationship between the Size and Production of All Skaters in 2017-2018
+
+If the top 15 point producers are reflective of the league average weight and height, is there at least an observable correlation between the production and size when looking at the league as a whole? 
+
+The graph below shows a dot for every single skater that had more than 20 games played in the 2017-18 season. We also plot (as the line in the graphs) the linear relationship between the two variables.
+
+```{r Scatterplots}
+
+gg_HeightWeightScatter <- players_2018 %>%
+  filter(GamesPlayed_2018 > 20) %>% 
+  select(FirstName, LastName, Points_AllSituations_2018, Height = Height_2018, Weight = Weight_2018) %>%
+  gather(key = 'SizeKey', value = 'SizeValue', Height:Weight) %>%
+  ggplot(aes(x = SizeValue, y = Points_AllSituations_2018, color = SizeKey)) +
+  geom_point(size = 1.5, alpha = 0.4) +
+  geom_smooth(method = 'lm', size = 1.5, alpha = 0.4) +
+  scale_color_manual(values = c('#041E42', '#FF4C00')) +
+  theme_classic() +
+  theme(panel.grid.major = element_line(color = 'gray70', linetype = 'longdash', size = 0.2), 
+        legend.position = 'none', 
+        axis.title.x = element_blank()) +
+  facet_wrap(~ SizeKey, scales = 'free_x') +
+  labs(title = 'Height/Weight vs. Points', subtitle = 'All skaters with more than 20 games played in 2017/18 season', y = 'Points')
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-08-28-does-size-matter/HeightWeightScatter.png', 
+    height = 6, width = 10, units = 'in', res = 800)
+print(gg_HeightWeightScatter)
+dev.off()
+
+
+```
+
+** Note the outlier that is Zdeno Chara
+
+The lines in each graph show a small negative correlation between Height/Weight and Points, but if we account for the statistical "error" (the shaded portion of the lines) the relationship is less pronounced. We would acknowledge that the line does have a downward slope, but you must also consider the entire shaded area to account for statistical significance. There are areas at 65 inches and at 80 inches (in the shaded area) that are at nearly the same level of points. 
+
+## Conclusion
+
+The analysis above shows that there is not a significant relationship between the size of a hockey player and how many points they will score in a season. Interestingly, you could draw the conclusion that the highest scoring hockey players tend to be of average weight and height (6"1', 202 lbs). 
+
+
+
+
+
