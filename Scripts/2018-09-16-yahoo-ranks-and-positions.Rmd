@@ -1,0 +1,158 @@
+---
+title: "Yahoo ranks and positions for 2018-19"
+date: "2018-09-16"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include = FALSE}
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(readxl)
+library(rvest)
+library(WriteXLS)
+
+exportPath <- 'C:/Users/harri/Documents/Blog - KnucklePuck/05. Export/'
+
+```
+
+## Introduction
+
+With the fantasy hockey season upon us it is time to review the top 250 players. One of the more reliable and widely used fantasy hockey websites is Yahoo.com. Unfortunately, Yahoo's rankings are not always provided in the easiest to use format. To make the rankings easier to use and analyze, we've written a script that converts this top-250 list into Excel.
+
+The Excel file and the code that we used to build the Excel file are available at this link: https://github.com/knuckle-puck/hockey-data
+
+The Excel file contains the Yahoo Rank (compiled from a number of their own experts), Player Name, Player Position (according to Yahoo eligibility), the Player's Team, and whether the player is currently a pending UFA/RFA at the end of this coming season.
+
+```{r InitialPull}
+
+# pulled from NHL.com link below
+
+nhlCom <- read_html('https://www.nhl.com/news/fantasy-hockey-top-250-rankings-players-2018-19/c-281505474')
+
+```
+
+```{r TablePull}
+
+# html node is "p"
+yahooRankings_HTML <- html_nodes(nhlCom, 'p')
+
+# convert raw html into text
+yahooRankings <- html_text(yahooRankings_HTML)[27]
+
+```
+
+```{r Clean}
+
+# convert into vector
+yahooRankings <- yahooRankings %>% 
+  str_split('\\)') %>%
+  unlist()
+
+# convert into a tibble
+yahooRankings_Tbl <- tibble(FullColumn = yahooRankings)
+
+# apply certain cleaning functions over each row
+yahooRankings_Final <- yahooRankings_Tbl %>% 
+  pmap(function(FullColumn) {
+    
+    spaceSplit <- str_split(FullColumn, ' ') %>% unlist()
+    
+    # First Column = combinedRank
+    combinedRank <- spaceSplit[1]
+    namePosTeam <- spaceSplit[2:length(spaceSplit)] %>% paste(collapse = ' ')
+    
+    commaSplit <- str_split(namePosTeam, '\\, ') %>% unlist()
+    # Second column = playerName
+    playerName <- commaSplit[1]
+    # Third column = playerPosition
+    playerPosition <- commaSplit[2]
+    # Fourth column = team
+    team <- (commaSplit[3:length(commaSplit)] %>% str_split(' ') %>% unlist())[1]
+    
+    allCols <- tibble(Rank = combinedRank, 
+                      Name = playerName, 
+                      Position = playerPosition, 
+                      Team = team)
+    
+    return(allCols)
+    
+  }) %>%
+  bind_rows()
+
+# remove the dot from Rank column
+# change asterixes to more meaningful columns
+yahooRankings_Final <- yahooRankings_Final %>%
+  mutate(Rank = str_remove(Rank, '\\.'), 
+         PotentialUFAorRFA = str_detect(Team, '\\*'), 
+         Team = str_remove(Team, '\\*\\*'), 
+         Team = str_remove(Team, '\\*')) %>%
+  filter(!is.na(Position))
+
+```
+
+## Position Summary
+
+We have created a few graphs that show some interesting statistics about the 250 players that were chosen for this list. There are 156 forwards, 62 defensemen, and 32 goaltenders that made the cut. The 156 forwards consist of a larger portion of centers compared to left-wingers and right-wingers. Interestingly, there is only one single player with triple eligibility to start the season (Tomas Hertl).
+
+```{r PositionSummary}
+
+gg_ByPosition <- yahooRankings_Final %>%
+  count(Position) %>%
+  arrange(desc(n)) %>%
+  mutate(Position = parse_factor(Position, levels = Position)) %>%
+  ggplot(aes(x = Position, y = n)) +
+  geom_bar(stat = 'identity', alpha = 0.75, color = '#041E42', fill = '#041E42') +
+  geom_text(aes(label = n), vjust = 2, color = 'white', size = 3) +
+  theme_classic() +
+  theme(axis.text.y = element_blank()) +
+  labs(title = 'Top 250 Players Ranked by Yahoo Fantasy Hockey by Position', subtitle = 'Source: https://www.nhl.com/news/fantasy-hockey-top-250-rankings-players-2018-19/c-281505474', x = 'Position', y = 'Count')
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-16-web-scraping-for-yahoo-rank-and-position/PlayersByPosition.png', 
+    height = 6, width = 10, units = 'in', res = 800)
+print(gg_ByPosition)
+dev.off()
+
+```
+
+## Team Summary
+
+There are a few minor surprises when you take a look at the teams with the most players in the 250 according to Yahoo fantasy rankings. Interesting to note that the lowest ranked playoff team is New Jersey; but this still feels reasonable given that the majority of their production came from one player, Taylor Hall. We also are noticing that there are some teams at the bottom of the list who are in the conversation for playoff contention (Edmonton, New York Rangers, Washington, and Buffalo among others).
+
+```{r TeamSummary}
+
+gg_ByTeam <- yahooRankings_Final %>%
+  count(Team) %>%
+  arrange(desc(n)) %>%
+  mutate(Team = parse_factor(Team, levels = Team)) %>%
+  ggplot(aes(x = Team, y = n)) +
+  geom_bar(stat = 'identity', alpha = 0.75, color = '#041E42', fill = '#041E42') +
+  geom_text(aes(label = n), vjust = 2, color = 'white', size = 3) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1), 
+        axis.text.y = element_blank()) +
+  labs(title = 'Top 250 Players Ranked by Yahoo Fantasy Hockey by Team', subtitle = 'Source: https://www.nhl.com/news/fantasy-hockey-top-250-rankings-players-2018-19/c-281505474', x = 'Team', y = 'Count')
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-16-web-scraping-for-yahoo-rank-and-position/PlayersByTeam.png', 
+    height = 6, width = 10, units = 'in', res = 800)
+print(gg_ByTeam)
+dev.off()
+
+```
+
+```{r Export}
+
+WriteXLS('yahooRankings_Final', 
+         'C:/Users/harri/Documents/Blog - KnucklePuck/05. Export/YahooPositionRanks_2018-19.xlsx')
+
+```
+
+
+
+
+
