@@ -1,0 +1,21 @@
+August 18, 2018:
+-> added variables:
+	- Corsi
+	- Corsi for teammates
+	- Corsi for competition
+	- Position
+	- DraftYear
+	- YearsSinceDraft
+	- Undrafted
+-> standardized Position
+
+August 30, 2018:
+-> added Salary to 2016, 2017, 2018 (2015 did not have Salary for some reason)
+	- only updated Players_List
+
+September 9, 2018
+-> added Expected Goals for all years
+
+September 15, 2018
+-> fixed an column name issues
+-> fixed missing values in columns that were being created
