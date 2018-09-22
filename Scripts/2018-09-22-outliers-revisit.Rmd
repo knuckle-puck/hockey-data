@@ -1,0 +1,200 @@
+---
+title: "Outliers Revisit"
+author: "KnucklePuck"
+date: "2018-09-22"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+```{r setup, include=FALSE}
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(magrittr)
+library(lubridate)
+library(knitr)
+library(readxl)
+
+importPath <- 'C:/Users/harri/Documents/Blog - KnucklePuck/05. Export/'
+
+```
+
+## Introduction
+
+The technical term is "relative age effect" (RAE). It describes the bias that sometimes exists in sports and other disciplines where participation is higher among those born earlier in the relevant selection period. This idea has been popularized by a number of scientific articles and the Malcolm Gladwell book *Outliers*, published in 2008. One statement that Gladwell gave in an ESPN interview was that "Canada was squandering the talents of hundreds of boys with late birthdays." In this article we test whether the relative age effect is still prominent in the NHL. 
+
+```{r ImportData}
+
+# this gives us a list with 2018 in the first element, 2017 in the second element, etc.
+players <- read_rds(paste0(importPath, 'Players_List.rds'))
+
+players_2018 <- players$Players_2018
+players_2017 <- players$Players_2017
+players_2016 <- players$Players_2016
+players_2015 <- players$Players_2015
+
+players_2018 %<>%
+  mutate(BirthMonth = month(DateOfBirth))
+
+# canadian births by month
+canBirths <- read_excel('C:/Users/harri/Documents/Blog - KnucklePuck/04. Rawdata/Canadian Births by Month.xlsx')
+
+```
+
+```{r PreProcessing}
+
+nhlBirths_ByMonth <- players_2018 %>%
+  filter(GamesPlayed_2018 > 20) %>%
+  group_by(BirthMonth) %>%
+  summarize(Count = n(), 
+            PointsPerGame_Mean = mean(Points_AllSituations_2018 / GamesPlayed_2018), 
+            PointsPerGame_Median = median(Points_AllSituations_2018 / GamesPlayed_2018), 
+            Salary_Mean = mean(Salary_2018, na.rm = T), 
+            Salary_Median = median(Salary_2018, na.rm = T)) %>%
+  ungroup()
+
+nhlBirths_ByQuarter <- players_2018 %>%
+  filter(GamesPlayed_2018 > 20) %>%
+  mutate(Region = if_else(CountryOfBirth == 'CAN', 'Canadian', 
+                          if_else(CountryOfBirth == 'USA', 'American', 
+                                  'Other Nationality')), 
+         Quarter = if_else(BirthMonth %in% 1:3, 1, 
+                           if_else(BirthMonth %in% 4:6, 2, 
+                                   if_else(BirthMonth %in% 7:9, 3, 
+                                           4)))) %>%
+  group_by(Region, Quarter) %>%
+  summarize(Count = n(), 
+            PointsPerGame_Mean = mean(Points_AllSituations_2018 / GamesPlayed_2018), 
+            PointsPerGame_Median = median(Points_AllSituations_2018 / GamesPlayed_2018), 
+            Salary_Mean = mean(Salary_2018, na.rm = T), # Alex Burmistsrov is missing Salary 
+            Salary_Median = median(Salary_2018, na.rm = T)) %>%
+  ungroup()
+
+# just going to use 2016 data
+canBirths_ByQuarter <- canBirths %>%
+  mutate(Quarter = if_else(MonthNumber %in% 1:3, 1, 
+                           if_else(MonthNumber %in% 4:6, 2, 
+                                   if_else(MonthNumber %in% 7:9, 3, 
+                                           4)))) %>%
+  group_by(Quarter) %>%
+  summarize(Count = sum(`2016`)) %>%
+  ungroup() %>%
+  mutate(Percent = Count / sum(Count))
+
+```
+
+## Number of Players by Month of Birth
+
+The graph below shows the number of players in the NHL (with at least 20 games played in the 2017-18) by their month of birth. There appears to be a larger portion in the first half of the year when compared to the second half of the year. October itself seems to be an exception, but most other months in the second half of the year are under-represented. If we group the date into quarters we can see a more obvious trend.
+
+Note that we would expect the general population to be born at roughly the same rate for each month of the year. A quick look at recent data from Statistics Canada suggests that this is a safe assumption to make: https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1310041501.
+
+```{r MonthGraph_Bar}
+
+gg_ByMonth_AllCountries <- nhlBirths_ByMonth %>%
+  # mutate(Percent = Count / sum(Count)) %>%
+  ggplot(aes(x = factor(BirthMonth), y = Count)) +
+  geom_bar(stat = 'identity', alpha = 0.5, fill = '#041E42', color = '#041E42') +
+  theme_classic() +
+  labs(title = 'Total Players by Birth Month', subtitle = 'NHL players with more than 20 games played in the 2017-18 season', x = 'Month', y = 'Count') 
+
+print(gg_ByMonth_AllCountries)
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-22-outliers-revisit/ByMonth_AllCountries.png', 
+    height = 4, width = 5, res = 800, units = 'in')
+print(gg_ByMonth_AllCountries)
+dev.off()
+
+```
+
+## Number of Players by Quarter and by Country of Birth
+
+The graph below shows the number of players by their quarter and country of birth (for players with at least 20 games played in the 2017-18 season). It is clear that Canadian NHL players are still impacted by the relative age effect. The rest of the NHL, however, does not appear to have this kind of trend. 
+
+A standardized cutoff month will determine which children could have this type of advantage. For example, minor hockey leagues in Canada decide that January 1st is the date at which children need to be split into different age groups. It is possible that other countries/states/provinces have different cutoff dates whereas Canada is unified in using January 1st. It is also possible, and likely, that Canada takes youth hockey more seriously than other countries, making the selection process for higher end youth hockey players more significant. This graph does not rule out that the relative age effect could be present in other countries, but provides strong evidence that it is present in Canada.
+
+One negative impact of the relative age effect is that NHL players might be developed and selected as a result of bias. To examine whether or not this is true we will analyse both the salary and points scored for (Canadian) NHL players born in each quarter of the year. If we see that (Canadian) NHL players have roughly similar points and salary across each month then it is one more argument demonstrating the prevalence of the relative age effect in the NHL. 
+
+```{r ByQuarter_ByCountry}
+
+gg_ByQuarter_ByCountry <- nhlBirths_ByQuarter %>%
+  ggplot(aes(x = factor(Quarter), y = Count, fill = Region, color = Region)) +
+  geom_bar(stat = 'identity', alpha = 0.5) +
+  scale_color_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  scale_fill_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  theme_classic() +
+  theme(legend.position = 'none') +
+  labs(title = 'Total Players by Quarter and Country of Birth', subtitle = 'NHL players with more than 20 games played in the 2017-18 season', x = 'Quarter', y = 'Count') +
+  facet_wrap(~ Region, ncol = 3)
+
+print(gg_ByQuarter_ByCountry)
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-22-outliers-revisit/ByQuarter_ByCountry.png', 
+    height = 4, width = 5, res = 800, units = 'in')
+print(gg_ByQuarter_ByCountry)
+dev.off()
+
+```
+
+## Median Salary by Quarter and Country of Birth
+
+To get a general sense of salary, we will look at the median within each group. In the graph below we see that Canadian NHL players born in the second half of the year have a *higher* salary than their counterparts born in the first half of the year. This is interesting since it further supports the notion that the relative age effect could be creating a significant bias in the NHL. Though salary is not that strongly correlated to talent, it is a useful proxy in this case that has some connection to a player's value to his team.
+
+```{r SalaryByMonth}
+
+gg_Salary <- nhlBirths_ByQuarter %>%
+  ggplot(aes(x = factor(Quarter), y = Salary_Median / 1000000, fill = Region, color = Region)) +
+  geom_bar(stat = 'identity', alpha = 0.5) +
+  scale_color_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  scale_fill_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  theme_classic() +
+  theme(legend.position = 'none') +
+  labs(title = 'Median Salary by Quarter and Country of Birth', subtitle = 'NHL players with more than 20 games played in the 2017-18 season', x = 'Quarter', y = 'Salary ($M)') +
+  facet_wrap(~ Region, ncol = 3) +
+  scale_y_continuous(labels = scales::dollar_format())
+
+print(gg_Salary)
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-22-outliers-revisit/ByQuarter_ByCountry_Salary.png', 
+    height = 4, width = 5, res = 800, units = 'in')
+print(gg_Salary)
+dev.off()
+
+```
+
+## Median Points by Quarter and Country of Birth
+
+In the graph below we look at the median points in each group to provide another angle in our investigation. We see further evidence that hockey players born in the first half of the year are not necessarily more productive than those born in the second half of the year. 
+
+```{r PointsByMonth}
+
+gg_Points <- nhlBirths_ByQuarter %>%
+  ggplot(aes(x = factor(Quarter), y = PointsPerGame_Median, fill = Region, color = Region)) +
+  geom_bar(stat = 'identity', alpha = 0.5) +
+  scale_color_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  scale_fill_manual(values = c('#041E42', '#FF4C00', 'gray50')) +
+  theme_classic() +
+  theme(legend.position = 'none') +
+  labs(title = 'Median Points per Game by Quarter and Country of Birth', subtitle = 'NHL players with more than 20 games played in the 2017-18 season', x = 'Quarter', y = 'Points per Game') +
+  facet_wrap(~ Region, ncol = 3)
+
+print(gg_Points)
+
+png('C:/Users/harri/Documents/Blog - KnucklePuck/00. Website/knuckle-puck.github.io/images/2018-09-22-outliers-revisit/ByQuarter_ByCountry_Points.png', 
+    height = 4, width = 5, res = 800, units = 'in')
+print(gg_Points)
+dev.off()
+
+```
+
+## Conclusion
+
+Canada may be squandering the talents of its young hockey players with late birthdays, but those that make it to the NHL are keeping up with the rest of the league even if they remain under-represented. 
+
+
+
+
